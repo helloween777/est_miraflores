@@ -40,12 +40,22 @@ def cargar_puntos():
         st.error(f"Error cargando puntos de inundación: {e}")
         return pd.DataFrame()
 
+@st.cache_data
+def cargar_precipitaciones():
+    try:
+        data = supabase.table("precipitaciones").select("id_estacion, fecha, pp, tmax, tmin").execute()
+        return pd.DataFrame(data.data)
+    except Exception as e:
+        st.error(f"Error cargando precipitaciones: {e}")
+        return pd.DataFrame()
+
 # Cargar y mostrar los datos
 df_predicciones = cargar_predicciones()
 df_eventos = cargar_eventos()
 df_puntos = cargar_puntos()
+df_precipitaciones = cargar_precipitaciones()
 
-st.title("Visualización de Datos de Inundaciones")
+st.title("Visualización de Datos de Inundaciones y Precipitaciones")
 
 # Mostrar datos de predicciones
 if not df_predicciones.empty:
@@ -82,6 +92,18 @@ if not df_eventos.empty:
     ax.set_xlabel("Nivel de Agua")
     ax.set_ylabel("Frecuencia")
     st.pyplot(fig)
+
+# Mostrar datos de precipitaciones
+if not df_precipitaciones.empty:
+    st.write("### Registros de precipitaciones")
+    st.dataframe(df_precipitaciones)
+
+    # Gráfico de variación de precipitaciones por fecha
+    st.subheader("Variación de precipitación por fecha")
+    precipitaciones_por_fecha = df_precipitaciones.groupby("fecha")["pp"].mean().reset_index()
+    st.line_chart(precipitaciones_por_fecha, x="fecha", y="pp")
+
+# Opcional: Agregar más funcionalidades como mapas interactivos o filtros
 
 
 
