@@ -103,7 +103,7 @@ if not df_precipitaciones.empty:
     precipitaciones_por_fecha = df_precipitaciones.groupby("fecha")["pp"].mean().reset_index()
     st.line_chart(precipitaciones_por_fecha, x="fecha", y="pp")
 
-# Opcional: Agregar más funcionalidades como mapas interactivos o filtros
+
 
 
 
