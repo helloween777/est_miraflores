@@ -1,14 +1,12 @@
 import streamlit as st
 from supabase import create_client
 
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+# Conexión directa sin caché
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-supabase = init_supabase()
-
+# Prueba la conexión
 response = supabase.table("predicciones_inundacion").select("*").execute()
 st.write(response.data)
 
