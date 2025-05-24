@@ -34,7 +34,7 @@ def cargar_eventos():
 @st.cache_data
 def cargar_puntos():
     try:
-        data = supabase.table("puntos_inundacion").select("id_punto, latitud, longitud").execute()
+        data = supabase.table("puntos_inundacion").select("id_punto, nombre_punto, latitud, longitud").execute()
         return pd.DataFrame(data.data)
     except Exception as e:
         st.error(f"Error cargando puntos de inundación: {e}")
@@ -45,19 +45,14 @@ df_predicciones = cargar_predicciones()
 df_eventos = cargar_eventos()
 df_puntos = cargar_puntos()
 
-st.title("Visualización de Predicciones y Eventos de Inundación")
+st.title("Visualización de Datos de Inundaciones")
 
 # Mostrar datos de predicciones
 if not df_predicciones.empty:
     st.write("### Predicciones registradas")
     st.dataframe(df_predicciones)
 
-    # Convertir fecha a formato datetime
     df_predicciones["fecha"] = pd.to_datetime(df_predicciones["fecha"])
-
-    # Estadísticas generales
-    st.subheader("Resumen estadístico de predicciones")
-    st.write(df_predicciones.describe())
 
     # Métricas clave
     st.subheader("Estadísticas de Riesgo de Inundación")
@@ -88,4 +83,4 @@ if not df_eventos.empty:
     ax.set_ylabel("Frecuencia")
     st.pyplot(fig)
 
-# Opcional: Agregar más funcionalidades como mapas interactivos o filtros
+
