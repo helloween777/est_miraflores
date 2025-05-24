@@ -8,7 +8,7 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.title("Visualización de Datos de Inundaciones y Precipitaciones")
+st.title("📊 Visualización de Datos de Inundaciones y Precipitaciones")
 
 # Función para cargar datos
 def cargar_datos(tabla):
@@ -33,21 +33,21 @@ df_precipitaciones["fecha"] = pd.to_datetime(df_precipitaciones["fecha"], errors
 df_eventos = df_eventos.dropna(subset=["fecha"])
 
 # Mostrar métricas clave
-st.subheader("Indicadores clave")
+st.subheader("📌 Indicadores clave")
 col1, col2, col3 = st.columns(3)
 col1.metric("Promedio Riesgo", f"{df_predicciones['riesgo_inundacion'].mean():.2f}")
-col2.metric("Máximo Riesgo", f"{df_predicciones['riesgo_inundacion'].max():.2f}")
-col3.metric("Mínimo Riesgo", f"{df_predicciones['riesgo_inundacion'].min():.2f}")
+col2.metric("Máximo Riesgo", f"{df_predicciones['riesgo_inundacion"].max():.2f}")
+col3.metric("Mínimo Riesgo", f"{df_predicciones['riesgo_inundacion"].min():.2f}")
 
 # Gráfico interactivo de evolución de riesgo
 if not df_predicciones.empty:
-    st.subheader("Evolución del Riesgo de Inundación")
+    st.subheader("📈 Evolución del Riesgo de Inundación")
     fig = px.line(df_predicciones, x="fecha", y="riesgo_inundacion", title="Riesgo de Inundación a lo largo del tiempo")
     st.plotly_chart(fig)
 
 # Filtro y visualización de eventos históricos
 if not df_eventos.empty:
-    st.subheader("Eventos Históricos de Inundación")
+    st.subheader("🌊 Eventos Históricos de Inundación")
     
     # Manejo seguro de valores mínimos y máximos
     min_fecha = df_eventos["fecha"].min()
@@ -72,7 +72,7 @@ if not df_eventos.empty:
 
 # Visualización de precipitaciones
 if not df_precipitaciones.empty:
-    st.subheader("Variación de Precipitación por Fecha")
+    st.subheader("☔ Variación de Precipitación por Fecha")
     fig_precipitaciones = px.line(df_precipitaciones, x="fecha", y="pp", title="Precipitaciones a lo largo del tiempo")
     st.plotly_chart(fig_precipitaciones)
 
