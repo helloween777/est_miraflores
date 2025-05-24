@@ -49,12 +49,16 @@ if not df_predicciones.empty:
 if not df_eventos.empty:
     st.subheader("Eventos Históricos de Inundación")
     
-    # Filtro de fechas con corrección de valores mínimos y máximos
+    # Manejo seguro de valores mínimos y máximos
     min_fecha = df_eventos["fecha"].min()
     max_fecha = df_eventos["fecha"].max()
 
     if pd.notnull(min_fecha) and pd.notnull(max_fecha):
-        fecha_seleccionada = st.slider("Selecciona un rango de fechas", min_value=min_fecha, max_value=max_fecha, value=(min_fecha, max_fecha))
+        fecha_seleccionada = st.slider(
+            "Selecciona un rango de fechas",
+            min_value=min_fecha, max_value=max_fecha,
+            value=(min_fecha, max_fecha)
+        )
         df_eventos_filtrado = df_eventos[(df_eventos["fecha"] >= fecha_seleccionada[0]) & (df_eventos["fecha"] <= fecha_seleccionada[1])]
         
         st.write("### Datos Filtrados")
