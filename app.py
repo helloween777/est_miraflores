@@ -56,8 +56,9 @@ if not df_eventos.empty:
     if pd.notnull(min_fecha) and pd.notnull(max_fecha):
         fecha_seleccionada = st.slider(
             "Selecciona un rango de fechas",
-            min_value=min_fecha, max_value=max_fecha,
-            value=(min_fecha, max_fecha)
+            min_value=min_fecha.to_pydatetime(),
+            max_value=max_fecha.to_pydatetime(),
+            value=(min_fecha.to_pydatetime(), max_fecha.to_pydatetime())
         )
         df_eventos_filtrado = df_eventos[(df_eventos["fecha"] >= fecha_seleccionada[0]) & (df_eventos["fecha"] <= fecha_seleccionada[1])]
         
