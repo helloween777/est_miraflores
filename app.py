@@ -36,8 +36,8 @@ df_eventos = df_eventos.dropna(subset=["fecha"])
 st.subheader("📌 Indicadores clave")
 col1, col2, col3 = st.columns(3)
 col1.metric("Promedio Riesgo", f"{df_predicciones['riesgo_inundacion'].mean():.2f}")
-col2.metric("Máximo Riesgo", f"{df_predicciones['riesgo_inundacion"].max():.2f}")
-col3.metric("Mínimo Riesgo", f"{df_predicciones['riesgo_inundacion"].min():.2f}")
+col2.metric("Máximo Riesgo", f"{df_predicciones['riesgo_inundacion'].max():.2f}")
+col3.metric("Mínimo Riesgo", f"{df_predicciones['riesgo_inundacion'].min():.2f}")
 
 # Gráfico interactivo de evolución de riesgo
 if not df_predicciones.empty:
