@@ -30,9 +30,11 @@ def load_data(table_name):
     try:
         response = supabase.table(table_name).select("*").execute()
         df = pd.DataFrame(response.data)
+        
         if 'fecha' in df.columns:
             df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
             df = df.dropna(subset=['fecha'])
+        
         return df
     except Exception as e:
         st.error(f"Error cargando {table_name}: {str(e)}")
@@ -42,9 +44,20 @@ def load_data(table_name):
 df_estaciones = load_data("estaciones")
 df_eventos = load_data("eventos_inundacion")
 
-# --- UNIÓN DE DATOS ---
+# --- VERIFICACIÓN DE COLUMNAS ---
 if not df_eventos.empty and not df_estaciones.empty:
-    df_eventos = df_eventos.merge(df_estaciones, on="id_estacion", how="left")
+    # Limpiar espacios en nombres de columnas
+    df_eventos.columns = df_eventos.columns.str.strip()
+    df_estaciones.columns = df_estaciones.columns.str.strip()
+
+    # Revisar existencia de la columna "id_estacion"
+    if "id_estacion" in df_eventos.columns and "id_estacion" in df_estaciones.columns:
+        df_eventos = df_eventos.merge(df_estaciones, on="id_estacion", how="left")
+    else:
+        st.error("Error: La columna 'id_estacion' no existe en una de las tablas.")
+        st.write("Columnas en df_eventos:", df_eventos.columns.tolist())
+        st.write("Columnas en df_estaciones:", df_estaciones.columns.tolist())
+        st.stop()
 
 # --- MAPA DE CALOR ---
 def show_heatmap():
@@ -56,7 +69,7 @@ def show_heatmap():
             lat="latitud",
             lon="longitud",
             z="nivel_agua",  # Intensidad basada en nivel de agua
-            radius=15,  # Ajustar el radio para mejorar visibilidad
+            radius=20,  # Ajustar el radio para mejorar la visibilidad
             opacity=0.8,
             zoom=12,
             height=600
@@ -65,7 +78,7 @@ def show_heatmap():
         fig.update_layout(
             mapbox_style="open-street-map",
             margin={"r":0,"t":0,"l":0,"b":0},
-            mapbox_center={"lat": -5.18, "lon": -80.63}  # Centrar en Piura
+            mapbox_center={"lat": -5.18, "lon": -80.63}  # Centro en Piura
         )
 
         st.plotly_chart(fig, use_container_width=True)
@@ -91,5 +104,5 @@ elif option == "Eventos Históricos":
 
 # --- FOOTER ---
 st.markdown("---")
-st.caption("Sistema desarrollado para el monitoreo de inundaciones en Piura | © 2023")
+st.caption("Sistema desarrollado para el monitoreo de inundaciones en Piura | © 2025")
 
