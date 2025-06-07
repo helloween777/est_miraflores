@@ -150,22 +150,23 @@ def show_risk_points():
 # --- EVENTOS HISTÓRICOS ---
 def show_historical():
     st.subheader("🌊 Eventos Históricos")
+    
     if not df_eventos.empty:
         col1, col2 = st.columns(2)
         with col1:
-            min_date = df_eventos['fecha'].min()
-            max_date = df_eventos['fecha'].max()
+            min_date = df_eventos['fecha'].min().to_pydatetime()
+            max_date = df_eventos['fecha'].max().to_pydatetime()
             date_range = st.slider("Rango de fechas", min_value=min_date, max_value=max_date, value=(min_date, max_date))
         with col2:
-            min_level = df_eventos['nivel_agua'].min()
-            max_level = df_eventos['nivel_agua'].max()
-            level_range = st.slider("Nivel de agua (m)", float(min_level), float(max_level), (float(min_level), float(max_level)))
-
+            min_level = float(df_eventos['nivel_agua'].min())
+            max_level = float(df_eventos['nivel_agua'].max())
+            level_range = st.slider("Nivel de agua (m)", min_value=min_level, max_value=max_level, value=(min_level, max_level))
+        
         filtered = df_eventos[
             (df_eventos['fecha'].between(*date_range)) & 
             (df_eventos['nivel_agua'].between(*level_range))
         ]
-
+        
         tab1, tab2 = st.tabs(["Gráfico", "Datos"])
         with tab1:
             fig = px.bar(
@@ -173,13 +174,13 @@ def show_historical():
                 x="fecha",
                 y="nivel_agua",
                 color="impacto",
-                title="Eventos Históricos de Inundación"
+                title="Niveles de Agua en Eventos Históricos"
             )
             st.plotly_chart(fig, use_container_width=True)
         with tab2:
             st.dataframe(filtered.sort_values("fecha", ascending=False))
     else:
-        st.warning("No hay eventos históricos disponibles.")
+        st.warning("No hay eventos históricos registrados")
 
 # --- PRECIPITACIONES ---
 def show_precipitation():
