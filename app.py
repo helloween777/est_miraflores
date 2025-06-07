@@ -5,156 +5,224 @@ import plotly.express as px
 
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(
-    page_title="Monitoreo Miraflores - Piura", 
+    page_title="Sistema de Inundaciones - Piura", 
     layout="wide",
-    page_icon="🌧️"
+    page_icon="🌊"
 )
 
 # --- CONEXIÓN SUPABASE ---
 @st.cache_resource
 def init_connection():
     try:
-        supabase = create_client(
+        return create_client(
             st.secrets["SUPABASE_URL"],
             st.secrets["SUPABASE_KEY"]
         )
-        return supabase
     except Exception as e:
         st.error(f"Error de conexión: {str(e)}")
         st.stop()
 
 supabase = init_connection()
 
-# --- FUNCIÓN PARA CARGAR DATOS ---
+# --- CARGA DE DATOS CON VALIDACIÓN ---
 @st.cache_data(ttl=600)
 def load_data(table_name):
     try:
         response = supabase.table(table_name).select("*").execute()
-        return pd.DataFrame(response.data)
+        df = pd.DataFrame(response.data)
+        
+        # Conversión de fechas para tablas relevantes
+        if 'fecha' in df.columns:
+            df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+            df = df.dropna(subset=['fecha'])
+        
+        return df
     except Exception as e:
         st.error(f"Error cargando {table_name}: {str(e)}")
         return pd.DataFrame()
 
-# --- VERIFICACIÓN DE ESTRUCTURA DE TABLAS ---
-def check_table_structure():
-    df_estaciones = load_data("estaciones")
-    
-    required_columns = {
-        'estaciones': ['id_estacion', 'nombre_estacion', 'latitud', 'longitud'],
-        'eventos_inundacion': ['id_evento', 'fecha', 'nivel_agua'],
-        'precipitaciones': ['fecha', 'pp']
-    }
-    
-    for table, columns in required_columns.items():
-        df = load_data(table)
-        missing = [col for col in columns if col not in df.columns]
+# Carga todas las tablas necesarias
+df_estaciones = load_data("estaciones")
+df_eventos = load_data("eventos_inundacion")
+df_predicciones = load_data("fechas_riesgo_inundacion")
+df_precipitaciones = load_data("precipitaciones")
+
+# --- VERIFICACIÓN DE COORDENADAS ---
+def verify_coordinates():
+    if not df_estaciones.empty:
+        required_coords = ['latitud', 'longitud']
+        missing = [col for col in required_coords if col not in df_estaciones.columns]
+        
         if missing:
-            st.error(f"Tabla '{table}' falta columnas: {', '.join(missing)}")
+            st.error(f"Error: La tabla 'estaciones' no tiene las columnas: {', '.join(missing)}")
+            st.write("Columnas disponibles:", df_estaciones.columns.tolist())
             st.stop()
 
-check_table_structure()
+verify_coordinates()
 
-# --- MAPA INTERACTIVO ---
+# --- MAPA INTERACTIVO MEJORADO ---
 def show_map():
-    st.subheader("📍 Mapa de la Estación Miraflores")
+    st.subheader("📍 Mapa de Puntos Críticos en Piura")
     
-    df = load_data("estaciones")
-    miraflores = df[df['nombre_estacion'].str.contains('Miraflores', case=False)]
+    # Asegurar que Miraflores esté destacado
+    df_map = df_estaciones.copy()
+    df_map['color'] = ['Miraflores' if 'Miraflores' in str(n) else 'Otras' 
+                      for n in df_map['nombre_estacion']]
     
-    if miraflores.empty:
-        st.warning("No se encontró la estación Miraflores")
-        return
-    
-    # Configuración del mapa centrado en Miraflores
     fig = px.scatter_mapbox(
-        miraflores,
+        df_map,
         lat="latitud",
         lon="longitud",
         hover_name="nombre_estacion",
         hover_data=["latitud", "longitud"],
-        zoom=15,
-        height=600,
-        color_discrete_sequence=["red"]
+        color="color",
+        color_discrete_map={"Miraflores": "red", "Otras": "blue"},
+        zoom=12,
+        height=600
     )
     
     fig.update_layout(
         mapbox_style="open-street-map",
         margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox_center={
-            "lat": float(miraflores.iloc[0]['latitud']),
-            "lon": float(miraflores.iloc[0]['longitud'])
-        }
+        mapbox_center={"lat": -5.18, "lon": -80.63}  # Centro en Piura
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Mostrar datos técnicos
-    with st.expander("📊 Datos técnicos de la estación"):
-        st.dataframe(miraflores)
+    # Mostrar tabla de estaciones
+    with st.expander("📋 Ver datos completos de estaciones"):
+        st.dataframe(df_estaciones)
 
-# --- INTERFAZ PRINCIPAL ---
-st.title("🌊 Monitoreo Hidrometeorológico - Estación Miraflores")
-
-tab1, tab2, tab3 = st.tabs(["Mapa", "Datos Históricos", "Precipitaciones"])
-
-with tab1:
-    show_map()
-
-with tab2:
-    st.subheader("📅 Eventos Históricos")
-    df_eventos = load_data("eventos_inundacion")
+# --- PREDICCIONES ---
+def show_predictions():
+    st.subheader("📈 Predicciones de Inundación")
     
-    if not df_eventos.empty:
-        df_eventos['fecha'] = pd.to_datetime(df_eventos['fecha'])
-        
-        # Filtros
+    if not df_predicciones.empty:
+        # Métricas resumen
         col1, col2 = st.columns(2)
         with col1:
-            fecha_min = df_eventos['fecha'].min().to_pydatetime()
-            fecha_max = df_eventos['fecha'].max().to_pydatetime()
-            rango_fechas = st.date_input(
+            high_risk = len(df_predicciones[df_predicciones['riesgo_inundacion'] > 0.7])
+            st.metric("Días con riesgo alto", high_risk)
+        
+        with col2:
+            last_date = df_predicciones['fecha'].max().strftime("%d/%m/%Y")
+            st.metric("Última actualización", last_date)
+        
+        # Gráfico interactivo
+        fig = px.line(
+            df_predicciones,
+            x="fecha",
+            y="riesgo_inundacion",
+            title="Evolución del Riesgo (0-1)",
+            labels={'riesgo_inundacion': 'Probabilidad'}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No hay datos de predicciones disponibles")
+
+# --- EVENTOS HISTÓRICOS ---
+def show_historical():
+    st.subheader("🌊 Eventos Históricos")
+    
+    if not df_eventos.empty:
+        # Filtros interactivos
+        col1, col2 = st.columns(2)
+        with col1:
+            min_date = df_eventos['fecha'].min().to_pydatetime()
+            max_date = df_eventos['fecha'].max().to_pydatetime()
+            date_range = st.slider(
                 "Rango de fechas",
-                value=(fecha_min, fecha_max),
-                min_value=fecha_min,
-                max_value=fecha_max
+                min_value=min_date,
+                max_value=max_date,
+                value=(min_date, max_date)
+            )
+        
+        with col2:
+            min_level = float(df_eventos['nivel_agua'].min())
+            max_level = float(df_eventos['nivel_agua'].max())
+            level_range = st.slider(
+                "Rango de nivel (m)",
+                min_value=min_level,
+                max_value=max_level,
+                value=(min_level, max_level)
             )
         
         # Aplicar filtros
-        if len(rango_fechas) == 2:
-            filtered = df_eventos[
-                (df_eventos['fecha'] >= pd.to_datetime(rango_fechas[0])) & 
-                (df_eventos['fecha'] <= pd.to_datetime(rango_fechas[1]))
-            ]
+        filtered = df_eventos[
+            (df_eventos['fecha'].between(*date_range)) & 
+            (df_eventos['nivel_agua'].between(*level_range))
+        ]
+        
+        # Visualización en pestañas
+        tab1, tab2 = st.tabs(["Gráfico", "Datos"])
+        
+        with tab1:
+            fig = px.bar(
+                filtered,
+                x="fecha",
+                y="nivel_agua",
+                color="impacto",
+                title="Niveles de Agua Registrados"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
             st.dataframe(filtered.sort_values('fecha', ascending=False))
-        else:
-            st.warning("Seleccione un rango de fechas válido")
     else:
         st.warning("No hay datos históricos disponibles")
 
-with tab3:
+# --- PRECIPITACIONES ---
+def show_precipitation():
     st.subheader("☔ Precipitaciones")
-    df_lluvia = load_data("precipitaciones")
     
-    if not df_lluvia.empty:
-        df_lluvia['fecha'] = pd.to_datetime(df_lluvia['fecha'])
-        
-        # Gráfico anual
-        st.write("### Acumulado Anual")
-        df_anual = df_lluvia.set_index('fecha').resample('Y')['pp'].sum().reset_index()
-        df_anual['año'] = df_anual['fecha'].dt.year
-        fig1 = px.bar(df_anual, x='año', y='pp', labels={'pp': 'Precipitación (mm)'})
+    if not df_precipitaciones.empty:
+        # Gráfico principal
+        fig1 = px.line(
+            df_precipitaciones,
+            x="fecha",
+            y="pp",
+            title="Precipitación Diaria (mm)"
+        )
         st.plotly_chart(fig1, use_container_width=True)
         
-        # Gráfico mensual
-        st.write("### Variación Mensual")
-        df_mensual = df_lluvia.set_index('fecha').resample('M')['pp'].sum().reset_index()
-        df_mensual['mes'] = df_mensual['fecha'].dt.strftime('%Y-%m')
-        fig2 = px.line(df_mensual, x='mes', y='pp', labels={'pp': 'Precipitación (mm)'})
+        # Gráfico de relación con temperatura
+        st.write("### Relación con Temperatura")
+        fig2 = px.scatter(
+            df_precipitaciones,
+            x="tmax",
+            y="pp",
+            trendline="lowess",
+            title="Precipitación vs Temperatura Máxima"
+        )
         st.plotly_chart(fig2, use_container_width=True)
     else:
-        st.warning("No hay datos de precipitación")
+        st.warning("No hay datos de precipitación disponibles")
+
+# --- INTERFAZ PRINCIPAL ---
+st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
+
+# Barra lateral de navegación
+option = st.sidebar.radio(
+    "Seleccione una vista:",
+    ["Mapa", "Predicciones", "Histórico", "Precipitaciones"],
+    index=0
+)
+
+# Mostrar sección seleccionada
+if option == "Mapa":
+    show_map()
+elif option == "Predicciones":
+    show_predictions()
+    st.markdown("---")
+    show_map()  # Mapa también en predicciones
+elif option == "Histórico":
+    show_historical()
+elif option == "Precipitaciones":
+    show_precipitation()
+    st.markdown("---")
+    show_map()  # Mapa también en precipitaciones
 
 # --- FOOTER ---
 st.markdown("---")
-st.caption("Sistema desarrollado para el monitoreo de la estación Miraflores, Piura | Datos actualizados a 2023")
+st.caption("Sistema desarrollado para el monitoreo de inundaciones en Piura | © 2023")
 
