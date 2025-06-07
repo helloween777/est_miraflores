@@ -74,35 +74,56 @@ def show_map():
 
 # --- MAPA DE CALOR DE RIESGO ---
 def show_heatmap():
-    st.subheader("🗺️ Mapa de Calor del Riesgo de Inundación")
+    st.subheader("🗺️ Mapa de Calor del Riesgo de Inundación (Ene–Abr)")
+    
     if not df_predicciones.empty and not df_puntos.empty:
-        df_heat = df_predicciones.merge(df_puntos, on="id_punto", how="left")
-        required = {"latitud", "longitud", "riesgo_inundacion"}
-        if required.issubset(df_heat.columns):
-            df_heat = df_heat.dropna(subset=list(required))
-            df_heat["latitud"] = pd.to_numeric(df_heat["latitud"], errors="coerce")
-            df_heat["longitud"] = pd.to_numeric(df_heat["longitud"], errors="coerce")
-            df_heat["riesgo_inundacion"] = pd.to_numeric(df_heat["riesgo_inundacion"], errors="coerce")
-            df_heat.dropna(subset=["latitud", "longitud", "riesgo_inundacion"], inplace=True)
+        # Merge predicciones + puntos
+        df_merge = df_predicciones.merge(df_puntos, on="id_punto", how="left")
 
-            layer = pdk.Layer(
-                "HeatmapLayer",
-                data=df_heat,
-                get_position='[longitud, latitud]',
-                get_weight="riesgo_inundacion",
-                radiusPixels=60,
-            )
-            view_state = pdk.ViewState(
-                latitude=df_heat["latitud"].mean(),
-                longitude=df_heat["longitud"].mean(),
-                zoom=11,
-                pitch=45
-            )
-            st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
-        else:
-            st.warning("Faltan columnas requeridas para el mapa de calor.")
+        # Agrupar por punto (promedio de riesgo)
+        df_riesgo = df_merge.groupby(["id_punto", "latitud", "longitud", "nombre_punto"], as_index=False)["riesgo_inundacion"].mean()
+        df_riesgo.dropna(subset=["latitud", "longitud", "riesgo_inundacion"], inplace=True)
+        
+        # Asegurarse que todo es numérico
+        df_riesgo["latitud"] = pd.to_numeric(df_riesgo["latitud"], errors="coerce")
+        df_riesgo["longitud"] = pd.to_numeric(df_riesgo["longitud"], errors="coerce")
+        df_riesgo["riesgo_inundacion"] = pd.to_numeric(df_riesgo["riesgo_inundacion"], errors="coerce")
+        
+        # Capa de calor
+        heat_layer = pdk.Layer(
+            "HeatmapLayer",
+            data=df_riesgo,
+            get_position='[longitud, latitud]',
+            get_weight="riesgo_inundacion",
+            radiusPixels=70,
+        )
+
+        # Capa de puntos para mostrar ubicaciones
+        scatter_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=df_riesgo,
+            get_position='[longitud, latitud]',
+            get_fill_color='[255, 140, 0, 160]',  # Naranja semitransparente
+            get_radius=100,
+        )
+
+        view_state = pdk.ViewState(
+            latitude=df_riesgo["latitud"].mean(),
+            longitude=df_riesgo["longitud"].mean(),
+            zoom=12,
+            pitch=45
+        )
+
+        st.pydeck_chart(pdk.Deck(
+            layers=[heat_layer, scatter_layer],
+            initial_view_state=view_state,
+            tooltip={"text": "{nombre_punto}\nRiesgo promedio: {riesgo_inundacion}"}
+        ))
+
+        with st.expander("📋 Tabla de riesgos promedios por zona"):
+            st.dataframe(df_riesgo.sort_values("riesgo_inundacion", ascending=False))
     else:
-        st.warning("No hay suficientes datos para mostrar el mapa de calor.")
+        st.warning("No hay datos disponibles para generar el mapa de calor.")
 
 # --- PREDICCIONES ---
 def show_predictions():
