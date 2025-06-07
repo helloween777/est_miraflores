@@ -176,25 +176,49 @@ def show_precipitation():
     st.subheader("☔ Precipitaciones")
     
     if not df_precipitaciones.empty:
-        # Gráfico principal
-        fig1 = px.line(
-            df_precipitaciones,
-            x="fecha",
-            y="pp",
-            title="Precipitación Diaria (mm)"
-        )
-        st.plotly_chart(fig1, use_container_width=True)
+        # Verificar columnas requeridas
+        required_cols = {'pp': 'Precipitación', 'tmax': 'Temperatura máxima'}
+        missing_cols = [col for col in required_cols if col not in df_precipitaciones.columns]
         
-        # Gráfico de relación con temperatura
-        st.write("### Relación con Temperatura")
-        fig2 = px.scatter(
-            df_precipitaciones,
-            x="tmax",
-            y="pp",
-            trendline="lowess",
-            title="Precipitación vs Temperatura Máxima"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+        if missing_cols:
+            st.error(f"Columnas faltantes en 'precipitaciones': {', '.join(missing_cols)}")
+            st.write("Columnas disponibles:", df_precipitaciones.columns.tolist())
+        else:
+            # Gráfico de precipitación principal
+            fig1 = px.line(
+                df_precipitaciones,
+                x="fecha",
+                y="pp",
+                title=f"Precipitación Diaria (mm)",
+                labels={'pp': 'Precipitación (mm)'}
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+            
+            # Gráfico de relación con temperatura (solo si existen ambas columnas)
+            st.write("### Relación con Temperatura")
+            try:
+                fig2 = px.scatter(
+                    df_precipitaciones.dropna(subset=['pp', 'tmax']),
+                    x="tmax",
+                    y="pp",
+                    trendline="lowess",
+                    title=f"Precipitación vs Temperatura Máxima",
+                    labels={
+                        'pp': 'Precipitación (mm)',
+                        'tmax': 'Temperatura máxima (°C)'
+                    }
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            except Exception as e:
+                st.warning(f"No se pudo generar el gráfico de relación: {str(e)}")
+                
+            # Estadísticas adicionales
+            with st.expander("📊 Estadísticas mensuales"):
+                df_mensual = df_precipitaciones.set_index('fecha').resample('M').agg({
+                    'pp': 'sum',
+                    'tmax': 'mean' if 'tmax' in df_precipitaciones.columns else None
+                }).reset_index()
+                st.dataframe(df_mensual)
     else:
         st.warning("No hay datos de precipitación disponibles")
 
