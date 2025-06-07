@@ -78,18 +78,20 @@ if visualizacion_tipo == "Predicciones de Inundaciones":
 elif visualizacion_tipo == "Eventos Históricos":
     st.subheader("🌊 Eventos Históricos de Inundación")
     if not df_eventos.empty:
-        # Filtro por rango de fechas
+        # Filtro por rango de fechas (CORRECCIÓN APPLICADA AQUÍ)
         min_date = df_eventos['fecha'].min()
         max_date = df_eventos['fecha'].max()
         date_range = st.slider(
             "Selecciona rango de fechas",
             min_value=min_date,
             max_value=max_date,
-            value=(min_date, max_date)
+            value=(min_date, max_date)  # <-- Se cerró el paréntesis correctamente
+        )
         
         filtered_data = df_eventos[
             (df_eventos['fecha'] >= date_range[0]) & 
             (df_eventos['fecha'] <= date_range[1])
+        ]
         
         # Gráfico de nivel de agua
         fig = px.bar(
