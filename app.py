@@ -62,60 +62,72 @@ verify_coordinates()
 def show_heatmap():
     st.subheader("🔥 Mapa de Calor de Inundaciones Históricas")
     
-    # 1. Preparar datos de estaciones
-    df_estaciones['latitud'] = df_estaciones['latitud'].astype(str).str.replace(":", ".").astype(float)
-    df_estaciones['longitud'] = df_estaciones['longitud'].astype(str).str.replace(":", ".").astype(float)
-    
-    # 2. Calcular densidad de eventos por proximidad geográfica
-    heat_data = df_estaciones.copy()
-    heat_data['eventos'] = 0
-    
-    if not df_eventos.empty:
-        # Asumimos que los eventos están georreferenciados
-        for idx, estacion in df_estaciones.iterrows():
-            # Radio aproximado de 1km (0.01 grados)
-            cerca = df_eventos[
-                (abs(df_eventos['latitud'].astype(float) - estacion['latitud']) < 0.01 &
-                (abs(df_eventos['longitud'].astype(float) - estacion['longitud']) < 0.01)
-            ]
-            heat_data.at[idx, 'eventos'] = len(cerca)
-    
-    # Normalizar riesgo (0-1)
-    max_eventos = heat_data['eventos'].max() if not heat_data.empty else 1
-    heat_data['riesgo'] = heat_data['eventos'] / max_eventos
-    
-    # 3. Crear mapa de calor
-    fig = px.density_mapbox(
-        heat_data,
-        lat='latitud',
-        lon='longitud',
-        z='riesgo',
-        radius=40,
-        zoom=14,
-        center={"lat": -5.18, "lon": -80.63},
-        mapbox_style="open-street-map",
-        color_continuous_scale="hot",
-        range_color=[0, 1],
-        hover_name="nombre_estacion",
-        hover_data={"eventos": True, "riesgo": ":.0%"},
-        title="Densidad de Eventos de Inundación"
-    )
-    
-    # 4. Añadir marcadores de estaciones
-    fig.add_scattermapbox(
-        lat=heat_data['latitud'],
-        lon=heat_data['longitud'],
-        mode='markers+text',
-        marker=dict(size=12, color='black'),
-        text=heat_data['nombre_estacion'],
-        textposition="top center"
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 5. Mostrar datos
-    with st.expander("📊 Datos de riesgo por estación"):
-        st.dataframe(heat_data.sort_values('riesgo', ascending=False))
+    try:
+        # 1. Preparar datos de estaciones (convertir coordenadas)
+        df_estaciones['latitud'] = df_estaciones['latitud'].astype(str).str.replace(":", ".").astype(float)
+        df_estaciones['longitud'] = df_estaciones['longitud'].astype(str).str.replace(":", ".").astype(float)
+        
+        # 2. Crear DataFrame para el mapa de calor
+        heat_data = df_estaciones.copy()
+        heat_data['eventos'] = 0  # Inicializar contador
+        
+        # 3. Verificar y preparar datos de eventos
+        if not df_eventos.empty:
+            # Asegurar que tenemos coordenadas en eventos
+            if 'latitud' in df_eventos.columns and 'longitud' in df_eventos.columns:
+                df_eventos['latitud'] = df_eventos['latitud'].astype(str).str.replace(":", ".").astype(float)
+                df_eventos['longitud'] = df_eventos['longitud'].astype(str).str.replace(":", ".").astype(float)
+                
+                # Calcular densidad de eventos (versión simplificada)
+                for idx, estacion in df_estaciones.iterrows():
+                    # Contar eventos en un radio aproximado (0.01 grados ≈ 1km)
+                    mask = (
+                        (abs(df_eventos['latitud'] - estacion['latitud']) < 0.01) & (
+                        (abs(df_eventos['longitud'] - estacion['longitud']) < 0.01)
+                    )
+                    heat_data.at[idx, 'eventos'] = len(df_eventos[mask])
+        
+        # 4. Calcular riesgo (0 a 1)
+        max_eventos = heat_data['eventos'].max() if heat_data['eventos'].max() > 0 else 1
+        heat_data['riesgo'] = heat_data['eventos'] / max_eventos
+        
+        # 5. Crear mapa de calor
+        fig = px.density_mapbox(
+            heat_data,
+            lat='latitud',
+            lon='longitud',
+            z='riesgo',
+            radius=30,
+            zoom=14,
+            center={"lat": -5.18, "lon": -80.63},
+            mapbox_style="open-street-map",
+            color_continuous_scale="hot",
+            range_color=[0, 1],
+            hover_name="nombre_estacion",
+            hover_data={"eventos": True, "riesgo": ":.0%"},
+            title="Densidad de Eventos de Inundación"
+        )
+        
+        # 6. Añadir marcadores
+        fig.add_scattermapbox(
+            lat=heat_data['latitud'],
+            lon=heat_data['longitud'],
+            mode='markers+text',
+            marker=dict(size=10, color='black'),
+            text=heat_data['nombre_estacion'],
+            textposition="top center"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 7. Mostrar datos
+        with st.expander("📊 Ver datos detallados"):
+            st.dataframe(heat_data[['nombre_estacion', 'latitud', 'longitud', 'eventos', 'riesgo']])
+            
+    except Exception as e:
+        st.error(f"Error al generar el mapa: {str(e)}")
+        st.write("Columnas en estaciones:", df_estaciones.columns.tolist())
+        st.write("Columnas en eventos:", df_eventos.columns.tolist() if not df_eventos.empty else "No hay datos")
 
 # --- INTERFAZ PRINCIPAL ---
 st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
