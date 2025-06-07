@@ -60,77 +60,71 @@ def verify_coordinates():
 
 verify_coordinates()
 
-# --- MAPA DE CALOR INTERACTIVO ---
 def show_map():
     st.subheader("🔥 Mapa de Calor de Riesgo en Piura")
     
-    # Preparar datos combinados de estaciones y eventos
-    df_map = df_estaciones.copy()
+    # 1. Cargar y preparar datos de estaciones
+    df_estaciones = load_data("estaciones")
+    df_estaciones['latitud'] = df_estaciones['latitud'].astype(str).str.replace(":", ".").astype(float)
+    df_estaciones['longitud'] = df_estaciones['longitud'].astype(str).str.replace(":", ".").astype(float)
     
-    # Corregir formato de coordenadas (reemplazar ":" por ".")
-    df_map['latitud'] = df_map['latitud'].astype(str).str.replace(":", ".").astype(float)
-    df_map['longitud'] = df_map['longitud'].astype(str).str.replace(":", ".").astype(float)
+    # 2. Calcular riesgo basado en eventos históricos (relación a través de id_estacion)
+    df_eventos = load_data("eventos_inundacion")
+    df_predicciones = load_data("fechas_riesgo_inundacion")
     
-    # Calcular riesgo basado en eventos históricos (si existen)
-    if not df_eventos.empty:
-        riesgo_por_estacion = df_eventos.groupby('id_estacion').agg({
+    # Opción A: Usar predicciones si existen
+    if not df_predicciones.empty and 'id_estacion' in df_predicciones.columns:
+        riesgo = df_predicciones.groupby('id_estacion')['riesgo_inundacion'].mean().reset_index()
+        df_map = df_estaciones.merge(riesgo, on='id_estacion')
+        z_col = 'riesgo_inundacion'
+    
+    # Opción B: Usar eventos históricos (id_punto parece ser id_estacion)
+    elif not df_eventos.empty and 'id_punto' in df_eventos.columns:
+        riesgo = df_eventos.groupby('id_punto').agg({
             'nivel_agua': 'mean',
             'id_evento': 'count'
         }).rename(columns={'id_evento': 'frecuencia'})
-        
-        # Normalizar valores para el mapa de calor (0-1)
-        riesgo_por_estacion['riesgo'] = (
-            riesgo_por_estacion['nivel_agua'] * riesgo_por_estacion['frecuencia']
-        ).rank(pct=True)
-        
-        df_map = df_map.merge(riesgo_por_estacion, on='id_estacion', how='left')
-    else:
-        # Si no hay eventos, usar valores predeterminados basados en posición
-        df_map['riesgo'] = 0.5  # Valor medio por defecto
+        riesgo['riesgo'] = (riesgo['nivel_agua'] * riesgo['frecuencia']).rank(pct=True)
+        df_map = df_estaciones.merge(riesgo, left_on='id_estacion', right_on='id_punto')
+        z_col = 'riesgo'
     
-    # Crear mapa de calor
+    # Opción C: Datos por defecto si no hay relación
+    else:
+        df_map = df_estaciones.copy()
+        df_map['riesgo_default'] = 0.5  # Valor medio
+        z_col = 'riesgo_default'
+    
+    # 3. Crear mapa de calor
     fig = px.density_mapbox(
         df_map,
         lat='latitud',
         lon='longitud',
-        z='riesgo',
-        radius=20,
+        z=z_col,
+        hover_name='nombre_estacion',
+        hover_data=[z_col],
+        radius=30,
         zoom=13,
         center={"lat": -5.18, "lon": -80.63},
         mapbox_style="open-street-map",
-        color_continuous_scale="hot",
-        range_color=[0, 1],
-        hover_name="nombre_estacion",
-        hover_data=["riesgo"],
-        title="Intensidad de Riesgo de Inundación"
+        color_continuous_scale="jet",
+        range_color=[0, 1]
     )
     
-    # Personalizar barra de color
-    fig.update_layout(
-        coloraxis_colorbar={
-            'title': 'Nivel de Riesgo',
-            'tickvals': [0, 0.5, 1],
-            'ticktext': ['Bajo', 'Medio', 'Alto']
-        },
-        margin={"r":0,"t":40,"l":0,"b":0}
-    )
-    
-    # Añadir marcadores de puntos para las estaciones
+    # 4. Añadir marcadores de estaciones
     fig.add_scattermapbox(
         lat=df_map['latitud'],
         lon=df_map['longitud'],
         mode='markers+text',
         marker=dict(size=10, color='black'),
         text=df_map['nombre_estacion'],
-        textposition="top right",
-        hoverinfo='text'
+        textposition="top right"
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Mostrar tabla de datos
-    with st.expander("📊 Datos de riesgo por estación"):
-        st.dataframe(df_map.sort_values('riesgo', ascending=False))
+    # 5. Mostrar tabla de referencia
+    with st.expander("📊 Datos de riesgo"):
+        st.dataframe(df_map[['nombre_estacion', 'latitud', 'longitud', z_col]].sort_values(z_col, ascending=False))
 
 # --- PREDICCIONES ---
 def show_predictions():
