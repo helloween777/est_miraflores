@@ -41,11 +41,9 @@ def load_data(table_name):
         st.error(f"Error cargando {table_name}: {str(e)}")
         return pd.DataFrame()
 
-# Carga todas las tablas necesarias
+# Carga las tablas necesarias
 df_estaciones = load_data("estaciones")
 df_eventos = load_data("eventos_inundacion")
-df_predicciones = load_data("fechas_riesgo_inundacion")
-df_precipitaciones = load_data("precipitaciones")
 
 # --- VERIFICACIÓN DE COORDENADAS ---
 def verify_coordinates():
@@ -60,200 +58,64 @@ def verify_coordinates():
 
 verify_coordinates()
 
-def show_map():
-    st.subheader("🔥 Mapa de Calor de Riesgo en Piura")
+# --- MAPA DE CALOR MEJORADO ---
+def show_heatmap():
+    st.subheader("🔥 Mapa de Calor de Inundaciones Históricas")
     
-    # 1. Cargar y preparar datos de estaciones
-    df_estaciones = load_data("estaciones")
+    # 1. Preparar datos de estaciones
     df_estaciones['latitud'] = df_estaciones['latitud'].astype(str).str.replace(":", ".").astype(float)
     df_estaciones['longitud'] = df_estaciones['longitud'].astype(str).str.replace(":", ".").astype(float)
     
-    # 2. Calcular riesgo basado en eventos históricos (relación a través de id_estacion)
-    df_eventos = load_data("eventos_inundacion")
-    df_predicciones = load_data("fechas_riesgo_inundacion")
+    # 2. Calcular densidad de eventos por proximidad geográfica
+    heat_data = df_estaciones.copy()
+    heat_data['eventos'] = 0
     
-    # Opción A: Usar predicciones si existen
-    if not df_predicciones.empty and 'id_estacion' in df_predicciones.columns:
-        riesgo = df_predicciones.groupby('id_estacion')['riesgo_inundacion'].mean().reset_index()
-        df_map = df_estaciones.merge(riesgo, on='id_estacion')
-        z_col = 'riesgo_inundacion'
+    if not df_eventos.empty:
+        # Asumimos que los eventos están georreferenciados
+        for idx, estacion in df_estaciones.iterrows():
+            # Radio aproximado de 1km (0.01 grados)
+            cerca = df_eventos[
+                (abs(df_eventos['latitud'].astype(float) - estacion['latitud']) < 0.01 &
+                (abs(df_eventos['longitud'].astype(float) - estacion['longitud']) < 0.01)
+            ]
+            heat_data.at[idx, 'eventos'] = len(cerca)
     
-    # Opción B: Usar eventos históricos (id_punto parece ser id_estacion)
-    elif not df_eventos.empty and 'id_punto' in df_eventos.columns:
-        riesgo = df_eventos.groupby('id_punto').agg({
-            'nivel_agua': 'mean',
-            'id_evento': 'count'
-        }).rename(columns={'id_evento': 'frecuencia'})
-        riesgo['riesgo'] = (riesgo['nivel_agua'] * riesgo['frecuencia']).rank(pct=True)
-        df_map = df_estaciones.merge(riesgo, left_on='id_estacion', right_on='id_punto')
-        z_col = 'riesgo'
-    
-    # Opción C: Datos por defecto si no hay relación
-    else:
-        df_map = df_estaciones.copy()
-        df_map['riesgo_default'] = 0.5  # Valor medio
-        z_col = 'riesgo_default'
+    # Normalizar riesgo (0-1)
+    max_eventos = heat_data['eventos'].max() if not heat_data.empty else 1
+    heat_data['riesgo'] = heat_data['eventos'] / max_eventos
     
     # 3. Crear mapa de calor
     fig = px.density_mapbox(
-        df_map,
+        heat_data,
         lat='latitud',
         lon='longitud',
-        z=z_col,
-        hover_name='nombre_estacion',
-        hover_data=[z_col],
-        radius=30,
-        zoom=13,
+        z='riesgo',
+        radius=40,
+        zoom=14,
         center={"lat": -5.18, "lon": -80.63},
         mapbox_style="open-street-map",
-        color_continuous_scale="jet",
-        range_color=[0, 1]
+        color_continuous_scale="hot",
+        range_color=[0, 1],
+        hover_name="nombre_estacion",
+        hover_data={"eventos": True, "riesgo": ":.0%"},
+        title="Densidad de Eventos de Inundación"
     )
     
     # 4. Añadir marcadores de estaciones
     fig.add_scattermapbox(
-        lat=df_map['latitud'],
-        lon=df_map['longitud'],
+        lat=heat_data['latitud'],
+        lon=heat_data['longitud'],
         mode='markers+text',
-        marker=dict(size=10, color='black'),
-        text=df_map['nombre_estacion'],
-        textposition="top right"
+        marker=dict(size=12, color='black'),
+        text=heat_data['nombre_estacion'],
+        textposition="top center"
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # 5. Mostrar tabla de referencia
-    with st.expander("📊 Datos de riesgo"):
-        st.dataframe(df_map[['nombre_estacion', 'latitud', 'longitud', z_col]].sort_values(z_col, ascending=False))
-
-# --- PREDICCIONES ---
-def show_predictions():
-    st.subheader("📈 Predicciones de Inundación")
-    
-    if not df_predicciones.empty:
-        # Métricas resumen
-        col1, col2 = st.columns(2)
-        with col1:
-            high_risk = len(df_predicciones[df_predicciones['riesgo_inundacion'] > 0.7])
-            st.metric("Días con riesgo alto", high_risk)
-        
-        with col2:
-            last_date = df_predicciones['fecha'].max().strftime("%d/%m/%Y")
-            st.metric("Última actualización", last_date)
-        
-        # Gráfico interactivo
-        fig = px.line(
-            df_predicciones,
-            x="fecha",
-            y="riesgo_inundacion",
-            title="Evolución del Riesgo (0-1)",
-            labels={'riesgo_inundacion': 'Probabilidad'}
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("No hay datos de predicciones disponibles")
-
-# --- EVENTOS HISTÓRICOS ---
-def show_historical():
-    st.subheader("🌊 Eventos Históricos")
-    
-    if not df_eventos.empty:
-        # Filtros interactivos
-        col1, col2 = st.columns(2)
-        with col1:
-            min_date = df_eventos['fecha'].min().to_pydatetime()
-            max_date = df_eventos['fecha'].max().to_pydatetime()
-            date_range = st.slider(
-                "Rango de fechas",
-                min_value=min_date,
-                max_value=max_date,
-                value=(min_date, max_date)
-            )
-        
-        with col2:
-            min_level = float(df_eventos['nivel_agua'].min())
-            max_level = float(df_eventos['nivel_agua'].max())
-            level_range = st.slider(
-                "Rango de nivel (m)",
-                min_value=min_level,
-                max_value=max_level,
-                value=(min_level, max_level)
-            )
-        
-        # Aplicar filtros
-        filtered = df_eventos[
-            (df_eventos['fecha'].between(*date_range)) & 
-            (df_eventos['nivel_agua'].between(*level_range))
-        ]
-        
-        # Visualización en pestañas
-        tab1, tab2 = st.tabs(["Gráfico", "Datos"])
-        
-        with tab1:
-            fig = px.bar(
-                filtered,
-                x="fecha",
-                y="nivel_agua",
-                color="impacto",
-                title="Niveles de Agua Registrados"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab2:
-            st.dataframe(filtered.sort_values('fecha', ascending=False))
-    else:
-        st.warning("No hay datos históricos disponibles")
-
-# --- PRECIPITACIONES ---
-def show_precipitation():
-    st.subheader("☔ Precipitaciones")
-    
-    if not df_precipitaciones.empty:
-        # Verificar columnas requeridas
-        required_cols = {'pp': 'Precipitación', 'tmax': 'Temperatura máxima'}
-        missing_cols = [col for col in required_cols if col not in df_precipitaciones.columns]
-        
-        if missing_cols:
-            st.error(f"Columnas faltantes en 'precipitaciones': {', '.join(missing_cols)}")
-            st.write("Columnas disponibles:", df_precipitaciones.columns.tolist())
-        else:
-            # Gráfico de precipitación principal
-            fig1 = px.line(
-                df_precipitaciones,
-                x="fecha",
-                y="pp",
-                title=f"Precipitación Diaria (mm)",
-                labels={'pp': 'Precipitación (mm)'}
-            )
-            st.plotly_chart(fig1, use_container_width=True)
-            
-            # Gráfico de relación con temperatura (solo si existen ambas columnas)
-            st.write("### Relación con Temperatura")
-            try:
-                fig2 = px.scatter(
-                    df_precipitaciones.dropna(subset=['pp', 'tmax']),
-                    x="tmax",
-                    y="pp",
-                    trendline="lowess",
-                    title=f"Precipitación vs Temperatura Máxima",
-                    labels={
-                        'pp': 'Precipitación (mm)',
-                        'tmax': 'Temperatura máxima (°C)'
-                    }
-                )
-                st.plotly_chart(fig2, use_container_width=True)
-            except Exception as e:
-                st.warning(f"No se pudo generar el gráfico de relación: {str(e)}")
-                
-            # Estadísticas adicionales
-            with st.expander("📊 Estadísticas mensuales"):
-                df_mensual = df_precipitaciones.set_index('fecha').resample('M').agg({
-                    'pp': 'sum',
-                    'tmax': 'mean' if 'tmax' in df_precipitaciones.columns else None
-                }).reset_index()
-                st.dataframe(df_mensual)
-    else:
-        st.warning("No hay datos de precipitación disponibles")
+    # 5. Mostrar datos
+    with st.expander("📊 Datos de riesgo por estación"):
+        st.dataframe(heat_data.sort_values('riesgo', ascending=False))
 
 # --- INTERFAZ PRINCIPAL ---
 st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
@@ -261,25 +123,21 @@ st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
 # Barra lateral de navegación
 option = st.sidebar.radio(
     "Seleccione una vista:",
-    ["Mapa", "Predicciones", "Histórico", "Precipitaciones"],
+    ["Mapa de Calor", "Eventos Históricos"],
     index=0
 )
 
 # Mostrar sección seleccionada
-if option == "Mapa":
-    show_map()
-elif option == "Predicciones":
-    show_predictions()
-    st.markdown("---")
-    show_map()  # Mapa también en predicciones
-elif option == "Histórico":
-    show_historical()
-elif option == "Precipitaciones":
-    show_precipitation()
-    st.markdown("---")
-    show_map()  # Mapa también en precipitaciones
+if option == "Mapa de Calor":
+    show_heatmap()
+elif option == "Eventos Históricos":
+    st.subheader("🌊 Eventos Históricos")
+    if not df_eventos.empty:
+        st.dataframe(df_eventos.sort_values('fecha', ascending=False))
+    else:
+        st.warning("No hay datos históricos disponibles")
 
 # --- FOOTER ---
 st.markdown("---")
-st.caption("Sistema desarrollado para el monitoreo de inundaciones en Piura | © 2023")
+st.caption("Sistema desarrollado para el monitoreo de inundaciones en Piura | © 2025")
 
