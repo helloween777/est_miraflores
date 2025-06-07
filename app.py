@@ -27,7 +27,7 @@ def cargar_datos(tabla):
         return pd.DataFrame()
 
 # Cargar datos
-df_predicciones = cargar_datos("predicciones_inundacion")
+df_predicciones = cargar_datos("fechas_riesgo_inundacion")
 df_eventos = cargar_datos("eventos_inundacion")
 df_precipitaciones = cargar_datos("precipitaciones")
 
