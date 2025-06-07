@@ -52,7 +52,7 @@ if not df_eventos.empty and not df_estaciones.empty:
 
     # Revisar existencia de la columna "id_estacion"
     if "id_estacion" in df_eventos.columns and "id_estacion" in df_estaciones.columns:
-        df_eventos = df_eventos.merge(df_estaciones, on="id_estacion", how="left")
+       df_eventos = df_eventos.merge(df_estaciones, left_on="id_punto", right_on="id_estacion", how="left")
     else:
         st.error("Error: La columna 'id_estacion' no existe en una de las tablas.")
         st.write("Columnas en df_eventos:", df_eventos.columns.tolist())
