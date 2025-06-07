@@ -60,38 +60,77 @@ def verify_coordinates():
 
 verify_coordinates()
 
-# --- MAPA INTERACTIVO MEJORADO ---
+# --- MAPA DE CALOR INTERACTIVO ---
 def show_map():
-    st.subheader("📍 Mapa de Puntos Críticos en Piura")
+    st.subheader("🔥 Mapa de Calor de Riesgo en Piura")
     
-    # Asegurar que Miraflores esté destacado
+    # Preparar datos combinados de estaciones y eventos
     df_map = df_estaciones.copy()
-    df_map['color'] = ['Miraflores' if 'Miraflores' in str(n) else 'Otras' 
-                      for n in df_map['nombre_estacion']]
     
-    fig = px.scatter_mapbox(
+    # Corregir formato de coordenadas (reemplazar ":" por ".")
+    df_map['latitud'] = df_map['latitud'].astype(str).str.replace(":", ".").astype(float)
+    df_map['longitud'] = df_map['longitud'].astype(str).str.replace(":", ".").astype(float)
+    
+    # Calcular riesgo basado en eventos históricos (si existen)
+    if not df_eventos.empty:
+        riesgo_por_estacion = df_eventos.groupby('id_estacion').agg({
+            'nivel_agua': 'mean',
+            'id_evento': 'count'
+        }).rename(columns={'id_evento': 'frecuencia'})
+        
+        # Normalizar valores para el mapa de calor (0-1)
+        riesgo_por_estacion['riesgo'] = (
+            riesgo_por_estacion['nivel_agua'] * riesgo_por_estacion['frecuencia']
+        ).rank(pct=True)
+        
+        df_map = df_map.merge(riesgo_por_estacion, on='id_estacion', how='left')
+    else:
+        # Si no hay eventos, usar valores predeterminados basados en posición
+        df_map['riesgo'] = 0.5  # Valor medio por defecto
+    
+    # Crear mapa de calor
+    fig = px.density_mapbox(
         df_map,
-        lat="latitud",
-        lon="longitud",
+        lat='latitud',
+        lon='longitud',
+        z='riesgo',
+        radius=20,
+        zoom=13,
+        center={"lat": -5.18, "lon": -80.63},
+        mapbox_style="open-street-map",
+        color_continuous_scale="hot",
+        range_color=[0, 1],
         hover_name="nombre_estacion",
-        hover_data=["latitud", "longitud"],
-        color="color",
-        color_discrete_map={"Miraflores": "red", "Otras": "blue"},
-        zoom=12,
-        height=600
+        hover_data=["riesgo"],
+        title="Intensidad de Riesgo de Inundación"
     )
     
+    # Personalizar barra de color
     fig.update_layout(
-        mapbox_style="open-street-map",
-        margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox_center={"lat": -5.18, "lon": -80.63}  # Centro en Piura
+        coloraxis_colorbar={
+            'title': 'Nivel de Riesgo',
+            'tickvals': [0, 0.5, 1],
+            'ticktext': ['Bajo', 'Medio', 'Alto']
+        },
+        margin={"r":0,"t":40,"l":0,"b":0}
+    )
+    
+    # Añadir marcadores de puntos para las estaciones
+    fig.add_scattermapbox(
+        lat=df_map['latitud'],
+        lon=df_map['longitud'],
+        mode='markers+text',
+        marker=dict(size=10, color='black'),
+        text=df_map['nombre_estacion'],
+        textposition="top right",
+        hoverinfo='text'
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Mostrar tabla de estaciones
-    with st.expander("📋 Ver datos completos de estaciones"):
-        st.dataframe(df_estaciones)
+    # Mostrar tabla de datos
+    with st.expander("📊 Datos de riesgo por estación"):
+        st.dataframe(df_map.sort_values('riesgo', ascending=False))
 
 # --- PREDICCIONES ---
 def show_predictions():
