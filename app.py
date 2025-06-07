@@ -75,55 +75,65 @@ def show_map():
 # --- MAPA DE CALOR DE RIESGO ---
 def show_heatmap():
     st.subheader("🗺️ Mapa de Calor del Riesgo de Inundación (Ene–Abr)")
-    
-    if not df_predicciones.empty and not df_puntos.empty:
-        # Merge predicciones + puntos
-        df_merge = df_predicciones.merge(df_puntos, on="id_punto", how="left")
 
-        # Agrupar por punto (promedio de riesgo)
-        df_riesgo = df_merge.groupby(["id_punto", "latitud", "longitud", "nombre_punto"], as_index=False)["riesgo_inundacion"].mean()
-        df_riesgo.dropna(subset=["latitud", "longitud", "riesgo_inundacion"], inplace=True)
+    if not df_predicciones.empty and not df_puntos.empty:
+        # Agrupamos riesgo por punto (promedio por punto en los primeros meses)
+        df_riesgo_prom = (
+            df_predicciones
+            .groupby("id_punto", as_index=False)["riesgo_inundacion"]
+            .mean()
+            .rename(columns={"riesgo_inundacion": "riesgo_promedio"})
+        )
+
+        # Merge completo con todos los puntos (para asegurar que estén todos)
+        df_map = df_puntos.merge(df_riesgo_prom, on="id_punto", how="left")
+
+        # Rellenar los riesgos faltantes con 0 para visualización
+        df_map["riesgo_promedio"] = df_map["riesgo_promedio"].fillna(0)
         
-        # Asegurarse que todo es numérico
-        df_riesgo["latitud"] = pd.to_numeric(df_riesgo["latitud"], errors="coerce")
-        df_riesgo["longitud"] = pd.to_numeric(df_riesgo["longitud"], errors="coerce")
-        df_riesgo["riesgo_inundacion"] = pd.to_numeric(df_riesgo["riesgo_inundacion"], errors="coerce")
-        
-        # Capa de calor
+        # Asegurar tipo numérico
+        df_map["latitud"] = pd.to_numeric(df_map["latitud"], errors="coerce")
+        df_map["longitud"] = pd.to_numeric(df_map["longitud"], errors="coerce")
+
+        # Mapa de calor
         heat_layer = pdk.Layer(
             "HeatmapLayer",
-            data=df_riesgo,
+            data=df_map,
             get_position='[longitud, latitud]',
-            get_weight="riesgo_inundacion",
-            radiusPixels=70,
+            get_weight="riesgo_promedio",
+            radiusPixels=60,
         )
 
-        # Capa de puntos para mostrar ubicaciones
+        # Marcadores en los puntos
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
-            data=df_riesgo,
+            data=df_map,
             get_position='[longitud, latitud]',
-            get_fill_color='[255, 140, 0, 160]',  # Naranja semitransparente
             get_radius=100,
+            get_fill_color='[255, 100, 0, 180]'
         )
 
+        # Vista del mapa
         view_state = pdk.ViewState(
-            latitude=df_riesgo["latitud"].mean(),
-            longitude=df_riesgo["longitud"].mean(),
+            latitude=df_map["latitud"].mean(),
+            longitude=df_map["longitud"].mean(),
             zoom=12,
-            pitch=45
+            pitch=40
         )
 
+        # Mostrar el mapa
         st.pydeck_chart(pdk.Deck(
             layers=[heat_layer, scatter_layer],
             initial_view_state=view_state,
-            tooltip={"text": "{nombre_punto}\nRiesgo promedio: {riesgo_inundacion}"}
+            tooltip={"text": "{nombre_punto}\nRiesgo: {riesgo_promedio}"}
         ))
 
-        with st.expander("📋 Tabla de riesgos promedios por zona"):
-            st.dataframe(df_riesgo.sort_values("riesgo_inundacion", ascending=False))
+        # Mostrar tabla con riesgos
+        with st.expander("📋 Tabla de Riesgos Promedio por Zona"):
+            st.dataframe(df_map[["nombre_punto", "riesgo_promedio"]].sort_values("riesgo_promedio", ascending=False))
     else:
-        st.warning("No hay datos disponibles para generar el mapa de calor.")
+        st.warning("No hay datos suficientes para mostrar el mapa de calor.")
+
 
 # --- PREDICCIONES ---
 def show_predictions():
