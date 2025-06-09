@@ -317,19 +317,19 @@ def show_model_training():
     y_pred = model.predict(X_test)
 
     # Métricas
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     r2 = r2_score(y_test, y_pred)
     st.success("✅ Evaluación inicial del modelo")
     st.write(f"**RMSE:** {rmse:.4f}")
     st.write(f"**R² Score:** {r2:.4f}")
 
     # Validación cruzada
-    cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
-    st.info(f"**Validación cruzada (RMSE promedio):** {-cv_scores.mean():.4f}")
+    cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_mean_squared_error")
+    st.info(f"**Validación cruzada (RMSE promedio):** {np.sqrt(-cv_scores.mean()):.4f}")
 
     # Sesgo-Varianza
     y_train_pred = model.predict(X_train)
-    train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
+    train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
     st.write("📊 Análisis de Sesgo-Varianza")
     st.write(f"- Train RMSE: {train_rmse:.4f}")
     st.write(f"- Test RMSE: {rmse:.4f}")
