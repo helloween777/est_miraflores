@@ -260,7 +260,20 @@ def show_model_training():
         return
 
     # --- Preparar los datos ---
-    df_model = df_predicciones.merge(df_puntos, on="id_punto", how="left")
+    df_model = df_predicciones.copy()
+
+# Revisar si existe nivel_precipitacion
+if "nivel_precipitacion" not in df_model.columns:
+    st.error("❌ La columna 'nivel_precipitacion' no existe en la tabla 'fechas_riesgo_inundacion'.")
+    st.stop()
+
+# Hacer merge solo si puntos tienen coincidencias
+if not df_puntos.empty:
+    df_model = df_model.merge(df_puntos[["id_punto", "latitud", "longitud", "altitud"]], on="id_punto", how="left")
+else:
+    st.error("❌ La tabla 'puntos_inundacion' está vacía.")
+    st.stop()
+
 
     # Verificar columnas necesarias
     required_cols = ["nivel_precipitacion", "latitud", "longitud", "altitud", "riesgo_inundacion"]
