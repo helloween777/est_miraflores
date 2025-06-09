@@ -4,9 +4,10 @@ import pandas as pd
 import plotly.express as px
 import pydeck as pdk
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.metrics import mean_squared_error, r2_score
 import numpy as np
+
 
 
 # --- CONFIGURACIÓN INICIAL ---
@@ -251,70 +252,79 @@ def show_precipitation():
 # -----ENTRENAMIENTO DEL MODELO------
 
 def show_model_training():
-    st.subheader("🤖 Entrenamiento de Modelo Predictivo (Random Forest)")
-    
-    # --- Preparar los datos ---
-    if df_precipitaciones.empty or df_predicciones.empty or df_puntos.empty:
+    st.subheader("🤖 Entrenamiento del Modelo de Predicción de Inundaciones (Random Forest)")
+
+    # Verificar si hay datos disponibles
+    if df_predicciones.empty or df_puntos.empty:
         st.warning("No hay datos suficientes para entrenar el modelo.")
         return
 
-    # Merge de predicciones con puntos
+    # --- Preparar los datos ---
     df_model = df_predicciones.merge(df_puntos, on="id_punto", how="left")
 
-    # También podemos agregar precipitaciones promedio por fecha
-    df_precip_day = df_precipitaciones.groupby("fecha", as_index=False).agg({
-        "pp": "mean",
-        "tmax": "mean"
-    })
-    df_model = df_model.merge(df_precip_day, on="fecha", how="left")
+    # Verificar columnas necesarias
+    required_cols = ["nivel_precipitacion", "latitud", "longitud", "altitud", "riesgo_inundacion"]
+    missing = [col for col in required_cols if col not in df_model.columns]
+    if missing:
+        st.error(f"Faltan columnas para el modelo: {', '.join(missing)}")
+        return
 
-    # Eliminar nulos
-    df_model = df_model.dropna(subset=["pp", "tmax", "latitud", "longitud", "altitud", "riesgo_inundacion"])
+    # Eliminar nulos y convertir a numérico
+    for col in required_cols:
+        df_model[col] = pd.to_numeric(df_model[col], errors='coerce')
+    df_model.dropna(subset=required_cols, inplace=True)
 
-    # Definir variables
-    X = df_model[["pp", "tmax", "altitud", "latitud", "longitud"]]
+    # Variables predictoras (X) y objetivo (y)
+    X = df_model[["nivel_precipitacion", "latitud", "longitud", "altitud"]]
     y = df_model["riesgo_inundacion"]
 
-    # Dividir datos
+    # Dividir en entrenamiento y prueba
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # --- Entrenamiento ---
+    # Entrenar modelo inicial
     model = RandomForestRegressor(random_state=42)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    # --- Evaluación básica ---
+    # Evaluación inicial
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
 
-    st.success("🔍 Evaluación inicial del modelo")
+    st.success("✅ Evaluación inicial del modelo")
     st.write(f"**RMSE:** {rmse:.4f}")
     st.write(f"**R² Score:** {r2:.4f}")
 
-    # --- Validación cruzada ---
+    # Validación cruzada
     cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
     st.info(f"**Validación cruzada (5-fold RMSE promedio):** {-cv_scores.mean():.4f}")
 
-    # --- Sesgo-Varianza ---
+    # Sesgo-varianza
     y_train_pred = model.predict(X_train)
     train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
-    st.write("📊 Análisis de Sesgo-Varianza")
-    st.write(f"- Train RMSE: {train_rmse:.4f}")
-    st.write(f"- Test RMSE: {rmse:.4f}")
 
-    # --- Optimización de hiperparámetros ---
-    st.write("⚙️ Optimización con GridSearch (puede tardar unos segundos)...")
+    st.write("📊 Análisis de Sesgo-Varianza")
+    st.write(f"- RMSE en entrenamiento: {train_rmse:.4f}")
+    st.write(f"- RMSE en prueba: {rmse:.4f}")
+
+    # Optimización con GridSearch
+    st.write("⚙️ Buscando mejores parámetros con GridSearchCV...")
     param_grid = {
-        'n_estimators': [100, 200],
-        'max_depth': [5, 10, None],
-        'min_samples_split': [2, 5]
+        "n_estimators": [100, 200],
+        "max_depth": [5, 10, None],
+        "min_samples_split": [2, 5]
     }
 
-    grid = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=3, scoring='neg_mean_squared_error')
+    grid = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=3, scoring="neg_mean_squared_error")
     grid.fit(X, y)
 
+    st.success("🌟 Mejor modelo encontrado:")
+    st.write(grid.best_params_)
+
+    # Mostrar importancia de variables
     best_model = grid.best_estimator_
-    st.success(f"✅ Modelo optimizado con parámetros: {grid.best_params_}")
+    importancias = pd.Series(best_model.feature_importances_, index=X.columns)
+    st.bar_chart(importancias.sort_values(ascending=True))
+
 
 
 
