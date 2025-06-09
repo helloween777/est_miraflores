@@ -258,42 +258,28 @@ def show_model_training():
         st.warning("No hay datos suficientes para entrenar el modelo.")
         return
 
-    # Clonar datos y normalizar nombres de columnas
+    # Preparar datos
     df_model = df_predicciones.copy()
     df_model.columns = df_model.columns.str.lower()
     df_puntos.columns = df_puntos.columns.str.lower()
 
-    # Validar columna 'nivel_precipitacion'
-    if "nivel_precipitacion" not in df_model.columns:
-        st.error("❌ La columna 'nivel_precipitacion' no existe en la tabla 'fechas_riesgo_inundacion'.")
+    if "id_punto" not in df_model.columns or "riesgo_inundacion" not in df_model.columns:
+        st.error("❌ La tabla de predicciones no contiene columnas necesarias.")
         return
 
-    # Verificar existencia de 'id_punto' en ambas tablas antes de hacer merge
-    if "id_punto" not in df_model.columns or "id_punto" not in df_puntos.columns:
-        st.error("❌ Falta la columna 'id_punto' para realizar la unión entre tablas.")
-        return
-
-    # Agregar columnas geográficas desde puntos_inundacion
+    # Agregar coordenadas
     df_model = df_model.merge(df_puntos[["id_punto", "latitud", "longitud", "altitud"]],
                               on="id_punto", how="left")
 
-    # Columnas necesarias para el modelo
-    required_cols = ["nivel_precipitacion", "latitud", "longitud", "altitud", "riesgo_inundacion"]
-    missing = [col for col in required_cols if col not in df_model.columns]
-    if missing:
-        st.error(f"Faltan columnas para el modelo: {', '.join(missing)}")
-        return
-
-    # Convertir a numérico y eliminar filas con nulos
+    required_cols = ["latitud", "longitud", "altitud", "riesgo_inundacion"]
     for col in required_cols:
-        df_model[col] = pd.to_numeric(df_model[col], errors='coerce')
+        df_model[col] = pd.to_numeric(df_model[col], errors="coerce")
     df_model.dropna(subset=required_cols, inplace=True)
 
-    # Separar variables predictoras y variable objetivo
-    X = df_model[["nivel_precipitacion", "latitud", "longitud", "altitud"]]
+    # Entrenar modelo sin precipitación
+    X = df_model[["latitud", "longitud", "altitud"]]
     y = df_model["riesgo_inundacion"]
 
-    # Entrenamiento y evaluación
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
     from sklearn.metrics import mean_squared_error, r2_score
@@ -314,14 +300,14 @@ def show_model_training():
     cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
     st.info(f"**Validación cruzada (RMSE promedio):** {-cv_scores.mean():.4f}")
 
-    # Análisis de sesgo-varianza
+    # Sesgo-Varianza
     y_train_pred = model.predict(X_train)
     train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
     st.write("📊 Análisis de Sesgo-Varianza")
     st.write(f"- Train RMSE: {train_rmse:.4f}")
     st.write(f"- Test RMSE: {rmse:.4f}")
 
-    # Optimización de hiperparámetros
+    # Optimización
     st.write("🔧 Buscando mejores hiperparámetros con GridSearch...")
     param_grid = {
         "n_estimators": [100, 200],
@@ -339,6 +325,7 @@ def show_model_training():
     importancias = pd.Series(best_model.feature_importances_, index=X.columns)
     st.write("📊 Importancia de variables")
     st.bar_chart(importancias.sort_values(ascending=True))
+
 
 
 
