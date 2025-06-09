@@ -3,6 +3,11 @@ from supabase import create_client
 import pandas as pd
 import plotly.express as px
 import pydeck as pdk
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+import numpy as np
+
 
 # --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(
@@ -243,15 +248,89 @@ def show_precipitation():
     else:
         st.warning("No hay datos de precipitaciones.")
 
+# -----ENTRENAMIENTO DEL MODELO------
+
+def show_model_training():
+    st.subheader("🤖 Entrenamiento de Modelo Predictivo (Random Forest)")
+    
+    # --- Preparar los datos ---
+    if df_precipitaciones.empty or df_predicciones.empty or df_puntos.empty:
+        st.warning("No hay datos suficientes para entrenar el modelo.")
+        return
+
+    # Merge de predicciones con puntos
+    df_model = df_predicciones.merge(df_puntos, on="id_punto", how="left")
+
+    # También podemos agregar precipitaciones promedio por fecha
+    df_precip_day = df_precipitaciones.groupby("fecha", as_index=False).agg({
+        "pp": "mean",
+        "tmax": "mean"
+    })
+    df_model = df_model.merge(df_precip_day, on="fecha", how="left")
+
+    # Eliminar nulos
+    df_model = df_model.dropna(subset=["pp", "tmax", "latitud", "longitud", "altitud", "riesgo_inundacion"])
+
+    # Definir variables
+    X = df_model[["pp", "tmax", "altitud", "latitud", "longitud"]]
+    y = df_model["riesgo_inundacion"]
+
+    # Dividir datos
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # --- Entrenamiento ---
+    model = RandomForestRegressor(random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    # --- Evaluación básica ---
+    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    r2 = r2_score(y_test, y_pred)
+
+    st.success("🔍 Evaluación inicial del modelo")
+    st.write(f"**RMSE:** {rmse:.4f}")
+    st.write(f"**R² Score:** {r2:.4f}")
+
+    # --- Validación cruzada ---
+    cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
+    st.info(f"**Validación cruzada (5-fold RMSE promedio):** {-cv_scores.mean():.4f}")
+
+    # --- Sesgo-Varianza ---
+    y_train_pred = model.predict(X_train)
+    train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
+    st.write("📊 Análisis de Sesgo-Varianza")
+    st.write(f"- Train RMSE: {train_rmse:.4f}")
+    st.write(f"- Test RMSE: {rmse:.4f}")
+
+    # --- Optimización de hiperparámetros ---
+    st.write("⚙️ Optimización con GridSearch (puede tardar unos segundos)...")
+    param_grid = {
+        'n_estimators': [100, 200],
+        'max_depth': [5, 10, None],
+        'min_samples_split': [2, 5]
+    }
+
+    grid = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=3, scoring='neg_mean_squared_error')
+    grid.fit(X, y)
+
+    best_model = grid.best_estimator_
+    st.success(f"✅ Modelo optimizado con parámetros: {grid.best_params_}")
+
+
+
+
+
+
 # --- INTERFAZ PRINCIPAL ---
 st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
 
 # Menú lateral
 option = st.sidebar.radio(
     "Seleccione una vista:",
-    ["Mapa", "Predicciones", "Histórico", "Precipitaciones", "Puntos de Inundación", "Mapa de Calor"],
+    ["Mapa", "Predicciones", "Histórico", "Precipitaciones", "Puntos de Inundación", "Mapa de Calor", "Entrenamiento de Modelo"],
     index=0
 )
+
 
 # Vista seleccionada
 if option == "Mapa":
@@ -270,6 +349,9 @@ elif option == "Puntos de Inundación":
     show_risk_points()
 elif option == "Mapa de Calor":
     show_heatmap()
+elif option == "Entrenamiento de Modelo":
+    show_model_training()
+
 
 # Footer
 st.markdown("---")
