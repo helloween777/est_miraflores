@@ -251,49 +251,62 @@ def show_precipitation():
 
 # -----ENTRENAMIENTO DEL MODELO------
 
+from scipy.spatial import cKDTree
+
 def show_model_training():
     st.subheader("🤖 Entrenamiento del Modelo de Predicción de Inundaciones (Random Forest)")
 
     # Validaciones iniciales
-    if df_fechas.empty or df_puntos.empty or df_precipitaciones.empty or df_estaciones.empty:
+    if df_predicciones.empty or df_puntos.empty or df_precipitaciones.empty or df_estaciones.empty:
         st.warning("Faltan datos para entrenar el modelo.")
         return
 
-    # Normalizar nombres de columnas
-    df_fechas = df_fechas.copy()
-    df_fechas.columns = df_fechas.columns.str.lower()
-    df_puntos.columns = df_puntos.columns.str.lower()
-    df_precipitaciones.columns = df_precipitaciones.columns.str.lower()
-    df_estaciones.columns = df_estaciones.columns.str.lower()
+    # Copias locales para evitar modificar originales
+    df_model = df_predicciones.copy()
+    puntos = df_puntos.copy()
+    estaciones = df_estaciones.copy()
+    precip = df_precipitaciones.copy()
 
-    # Merge con coordenadas del punto
-    df_model = df_fechas.merge(df_puntos, on="id_punto", how="left")
+    # Normalizar nombres de columnas
+    for df in [df_model, puntos, estaciones, precip]:
+        df.columns = df.columns.str.strip().str.lower()
+
+    # Asegurar columnas necesarias
+    for df, cols, name in [
+        (puntos, {"latitud", "longitud"}, "puntos_inundacion"),
+        (estaciones, {"latitud", "longitud"}, "estaciones"),
+        (precip, {"id_estacion", "fecha", "pp"}, "precipitaciones"),
+        (df_model, {"id_punto", "fecha", "riesgo_inundacion"}, "predicciones")
+    ]:
+        missing = cols - set(df.columns)
+        if missing:
+            st.error(f"❌ Faltan columnas en {name}: {', '.join(missing)}")
+            return
 
     # Emparejar cada punto con la estación más cercana
-    estaciones_coords = df_estaciones[["latitud", "longitud"]].values
-    puntos_coords = df_puntos[["latitud", "longitud"]].values
+    estaciones_coords = estaciones[["latitud", "longitud"]].values
+    puntos_coords = puntos[["latitud", "longitud"]].values
     tree = cKDTree(estaciones_coords)
-    dist, indices = tree.query(puntos_coords, k=1)
-    df_puntos["id_estacion"] = df_estaciones.iloc[indices]["id_estacion"].values
+    _, indices = tree.query(puntos_coords, k=1)
+    puntos["id_estacion"] = estaciones.iloc[indices]["id_estacion"].values
 
-    # Merge estación a los puntos
-    df_model = df_model.merge(df_puntos[["id_punto", "id_estacion"]], on="id_punto", how="left")
-
-    # Merge con precipitaciones (por fecha + id_estacion)
-    df_model = df_model.merge(df_precipitaciones[["id_estacion", "fecha", "pp"]],
+    # Merge de predicciones con puntos y luego con precipitaciones
+    df_model = df_model.merge(puntos[["id_punto", "latitud", "longitud", "id_estacion"]],
+                              on="id_punto", how="left")
+    df_model = df_model.merge(precip[["id_estacion", "fecha", "pp"]],
                               on=["id_estacion", "fecha"], how="left")
 
-    # Verificar columnas necesarias
+    # Validar columnas finales necesarias
     required_cols = ["riesgo_inundacion", "pp", "latitud", "longitud"]
     for col in required_cols:
         df_model[col] = pd.to_numeric(df_model[col], errors="coerce")
     df_model.dropna(subset=required_cols, inplace=True)
 
     if df_model.empty:
-        st.error("No hay datos completos para entrenar el modelo.")
+        st.error("No hay datos suficientes para entrenar el modelo.")
         return
 
-    # Definir variables X e y
+    # Variables predictoras y objetivo
     X = df_model[["pp", "latitud", "longitud"]]
     y = df_model["riesgo_inundacion"]
 
@@ -314,14 +327,14 @@ def show_model_training():
     cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
     st.info(f"**Validación cruzada (RMSE promedio):** {-cv_scores.mean():.4f}")
 
-    # Análisis de sesgo-varianza
+    # Sesgo-Varianza
     y_train_pred = model.predict(X_train)
     train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
     st.write("📊 Análisis de Sesgo-Varianza")
     st.write(f"- Train RMSE: {train_rmse:.4f}")
     st.write(f"- Test RMSE: {rmse:.4f}")
 
-    # Optimización de hiperparámetros
+    # Optimización
     st.write("🔧 Buscando mejores hiperparámetros con GridSearch...")
     param_grid = {
         "n_estimators": [100, 200],
@@ -339,6 +352,7 @@ def show_model_training():
     importancias = pd.Series(best_model.feature_importances_, index=X.columns)
     st.write("📊 Importancia de variables")
     st.bar_chart(importancias.sort_values(ascending=True))
+
 
 
 
