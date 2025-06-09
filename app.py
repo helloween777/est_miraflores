@@ -254,44 +254,58 @@ def show_precipitation():
 def show_model_training():
     st.subheader("🤖 Entrenamiento del Modelo de Predicción de Inundaciones (Random Forest)")
 
-    if df_predicciones.empty or df_puntos.empty:
-        st.warning("No hay datos suficientes para entrenar el modelo.")
+    # Validaciones iniciales
+    if df_fechas.empty or df_puntos.empty or df_precipitaciones.empty or df_estaciones.empty:
+        st.warning("Faltan datos para entrenar el modelo.")
         return
 
-    # Preparar datos
-    df_model = df_predicciones.copy()
-    df_model.columns = df_model.columns.str.lower()
+    # Normalizar nombres de columnas
+    df_fechas = df_fechas.copy()
+    df_fechas.columns = df_fechas.columns.str.lower()
     df_puntos.columns = df_puntos.columns.str.lower()
+    df_precipitaciones.columns = df_precipitaciones.columns.str.lower()
+    df_estaciones.columns = df_estaciones.columns.str.lower()
 
-    if "id_punto" not in df_model.columns or "riesgo_inundacion" not in df_model.columns:
-        st.error("❌ La tabla de predicciones no contiene columnas necesarias.")
-        return
+    # Merge con coordenadas del punto
+    df_model = df_fechas.merge(df_puntos, on="id_punto", how="left")
 
-    # Agregar coordenadas
-    df_model = df_model.merge(df_puntos[["id_punto", "latitud", "longitud", "altitud"]],
-                              on="id_punto", how="left")
+    # Emparejar cada punto con la estación más cercana
+    estaciones_coords = df_estaciones[["latitud", "longitud"]].values
+    puntos_coords = df_puntos[["latitud", "longitud"]].values
+    tree = cKDTree(estaciones_coords)
+    dist, indices = tree.query(puntos_coords, k=1)
+    df_puntos["id_estacion"] = df_estaciones.iloc[indices]["id_estacion"].values
 
-    required_cols = ["latitud", "longitud", "altitud", "riesgo_inundacion"]
+    # Merge estación a los puntos
+    df_model = df_model.merge(df_puntos[["id_punto", "id_estacion"]], on="id_punto", how="left")
+
+    # Merge con precipitaciones (por fecha + id_estacion)
+    df_model = df_model.merge(df_precipitaciones[["id_estacion", "fecha", "pp"]],
+                              on=["id_estacion", "fecha"], how="left")
+
+    # Verificar columnas necesarias
+    required_cols = ["riesgo_inundacion", "pp", "latitud", "longitud"]
     for col in required_cols:
         df_model[col] = pd.to_numeric(df_model[col], errors="coerce")
     df_model.dropna(subset=required_cols, inplace=True)
 
-    # Entrenar modelo sin precipitación
-    X = df_model[["latitud", "longitud", "altitud"]]
+    if df_model.empty:
+        st.error("No hay datos completos para entrenar el modelo.")
+        return
+
+    # Definir variables X e y
+    X = df_model[["pp", "latitud", "longitud"]]
     y = df_model["riesgo_inundacion"]
 
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-    from sklearn.metrics import mean_squared_error, r2_score
-
+    # Entrenamiento
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = RandomForestRegressor(random_state=42)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
+    # Métricas
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
-
     st.success("✅ Evaluación inicial del modelo")
     st.write(f"**RMSE:** {rmse:.4f}")
     st.write(f"**R² Score:** {r2:.4f}")
@@ -300,14 +314,14 @@ def show_model_training():
     cv_scores = cross_val_score(model, X, y, cv=5, scoring="neg_root_mean_squared_error")
     st.info(f"**Validación cruzada (RMSE promedio):** {-cv_scores.mean():.4f}")
 
-    # Sesgo-Varianza
+    # Análisis de sesgo-varianza
     y_train_pred = model.predict(X_train)
     train_rmse = mean_squared_error(y_train, y_train_pred, squared=False)
     st.write("📊 Análisis de Sesgo-Varianza")
     st.write(f"- Train RMSE: {train_rmse:.4f}")
     st.write(f"- Test RMSE: {rmse:.4f}")
 
-    # Optimización
+    # Optimización de hiperparámetros
     st.write("🔧 Buscando mejores hiperparámetros con GridSearch...")
     param_grid = {
         "n_estimators": [100, 200],
