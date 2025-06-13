@@ -60,7 +60,7 @@ verify_coordinates()
 
 # --- MAPA DE ESTACIONES ---
 def show_map():
-    st.subheader("📍 Mapa de Estaciones Meteorológicas")
+    st.subheader(" Mapa de Estaciones Meteorológicas")
     df_map = df_estaciones.copy()
     df_map['color'] = df_map['nombre_estacion'].apply(lambda x: "red" if "Miraflores" in str(x) else "blue")
     fig = px.scatter_mapbox(
@@ -80,7 +80,7 @@ def show_map():
 
 # --- MAPA DE CALOR DE RIESGO ---
 def show_heatmap():
-    st.subheader("🗺️ Mapa de Calor del Riesgo de Inundación (Ene–Abr)")
+    st.subheader("Mapa de Calor del Riesgo de Inundación (Ene–Abr)")
 
     if not df_predicciones.empty and not df_puntos.empty:
         # Agrupamos riesgo por punto (promedio por punto en los primeros meses)
@@ -135,7 +135,7 @@ def show_heatmap():
         ))
 
         # Mostrar tabla con riesgos
-        with st.expander("📋 Tabla de Riesgos Promedio por Zona"):
+        with st.expander("Tabla de Riesgos Promedio por Zona"):
             st.dataframe(df_map[["nombre_punto", "riesgo_promedio"]].sort_values("riesgo_promedio", ascending=False))
     else:
         st.warning("No hay datos suficientes para mostrar el mapa de calor.")
@@ -143,7 +143,7 @@ def show_heatmap():
 
 # --- PREDICCIONES ---
 def show_predictions():
-    st.subheader("📈 Predicciones de Inundación")
+    st.subheader("Predicciones de Inundación")
     if not df_predicciones.empty:
         col1, col2 = st.columns(2)
         with col1:
@@ -166,7 +166,7 @@ def show_predictions():
 
 # --- PUNTOS DE INUNDACIÓN ---
 def show_risk_points():
-    st.subheader("📌 Puntos de Inundación")
+    st.subheader("Puntos de Inundación")
     if not df_puntos.empty:
         if {'latitud', 'longitud'}.issubset(df_puntos.columns):
             fig = px.scatter_mapbox(
@@ -221,7 +221,7 @@ def show_historical():
 
 # --- PRECIPITACIONES ---
 def show_precipitation():
-    st.subheader("☔ Precipitaciones")
+    st.subheader("Precipitaciones")
     if not df_precipitaciones.empty:
         if "pp" not in df_precipitaciones.columns:
             st.error("Falta la columna 'pp' en la tabla de precipitaciones.")
@@ -254,7 +254,7 @@ def show_precipitation():
 from scipy.spatial import cKDTree
 
 def show_model_training():
-    st.subheader("🤖 Entrenamiento del Modelo de Predicción de Inundaciones (Random Forest)")
+    st.subheader("Entrenamiento del Modelo de Predicción de Inundaciones (Random Forest)")
 
     # Validaciones iniciales
     if df_predicciones.empty or df_puntos.empty or df_precipitaciones.empty or df_estaciones.empty:
@@ -280,7 +280,7 @@ def show_model_training():
     ]:
         missing = cols - set(df.columns)
         if missing:
-            st.error(f"❌ Faltan columnas en {name}: {', '.join(missing)}")
+            st.error(f" Faltan columnas en {name}: {', '.join(missing)}")
             return
 
     # Emparejar cada punto con la estación más cercana
@@ -319,7 +319,7 @@ def show_model_training():
     # Métricas
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
     r2 = r2_score(y_test, y_pred)
-    st.success("✅ Evaluación inicial del modelo")
+    st.success("Evaluación inicial del modelo")
     st.write(f"**RMSE:** {rmse:.4f}")
     st.write(f"**R² Score:** {r2:.4f}")
 
@@ -330,12 +330,12 @@ def show_model_training():
     # Sesgo-Varianza
     y_train_pred = model.predict(X_train)
     train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-    st.write("📊 Análisis de Sesgo-Varianza")
+    st.write("Análisis de Sesgo-Varianza")
     st.write(f"- Train RMSE: {train_rmse:.4f}")
     st.write(f"- Test RMSE: {rmse:.4f}")
 
     # Optimización
-    st.write("🔧 Buscando mejores hiperparámetros con GridSearch...")
+    st.write("Buscando mejores hiperparámetros con GridSearch...")
     param_grid = {
         "n_estimators": [100, 200],
         "max_depth": [5, 10, None],
@@ -345,7 +345,7 @@ def show_model_training():
     grid = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=3, scoring="neg_mean_squared_error")
     grid.fit(X, y)
 
-    st.success("🔍 Modelo optimizado:")
+    st.success("Modelo optimizado:")
     st.write(grid.best_params_)
 
     best_model = grid.best_estimator_
@@ -364,7 +364,7 @@ def show_model_training():
 
 
 # --- INTERFAZ PRINCIPAL ---
-st.title("🌧️ Sistema de Monitoreo de Inundaciones - Piura")
+st.title("Sistema de Monitoreo de Inundaciones - Piura")
 
 # Menú lateral
 option = st.sidebar.radio(
